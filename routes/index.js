@@ -1,9 +1,12 @@
-var express = require('express');
-var router = express.Router();
+const express = require('express');
 
-/* GET home page. */
-router.get('/', function(req, res, next) {
-  res.render('index', { title: 'Express' });
+const router = express.Router();
+
+router.get('/', (req, res) => {
+  res.json({
+    project: 'NNPTUD-C3-15-3-3',
+    message: 'Inventory API is running',
+  });
 });
 
 module.exports = router;

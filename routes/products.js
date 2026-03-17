@@ -1,125 +1,75 @@
-var express = require('express');
-var router = express.Router();
-let productModel = require('../schemas/products');//dbContext
-const { default: slugify } = require('slugify');
+const express = require('express');
+const mongoose = require('mongoose');
 
-/* GET users listing. */
-router.get('/', async function (req, res, next) {
-  let queries = req.query;
-  let minPrice = queries.minprice ? queries.minprice : 0;
-  let maxPrice = queries.maxprice ? queries.maxprice : 10000;
-  let titleQ = queries.title ? queries.title : '';
-  let result = await productModel.find({
-    isDeleted: false,
-    title: new RegExp(titleQ,'i'),
-    price:{
-      $gte:minPrice,
-      $lte:maxPrice
-    }
-  }).populate({
-    path:'category',
-    select:'name'
-  })
-  // result = result.filter(
-  //   function (e) {
-  //     return e.price >= minPrice && e.price <= maxPrice
-  //       && e.title.toLowerCase().includes(titleQ.toLowerCase())
-  //   }
-  // )
-  res.send(result);
-});
+const Product = require('../schemas/products');
+const Inventory = require('../schemas/inventories');
 
-router.get('/:id', async function (req, res, next) {
+const router = express.Router();
+
+router.get('/', async (req, res, next) => {
   try {
-    let id = req.params.id;
-    let result = await productModel.findOne({
-      isDeleted: false,
-      _id: id
-    })
-    if (result) {
-      res.send(result);
-    } else {
-      res.status(404).send({ message: "ID NOT FOUND" });
-    }
+    const products = await Product.find().sort({ createdAt: -1 });
+    res.json(products);
   } catch (error) {
-    res.status(404).send({ message: error.message });
+    next(error);
   }
 });
 
-router.post('/', async function (req, res, next) {
-  let newProduct = new productModel({
-    title: req.body.title,
-    slug: slugify(req.body.title, {
-      replacement: '-',
-      remove: undefined,
-      lower: true,
-      strict: false,
-    }),
-    price: req.body.price,
-    description: req.body.description,
-    category: req.body.category,
-    images: req.body.images
-  });
-  await newProduct.save();
-  res.send(newProduct)
-})
-router.put('/:id', async function (req, res, next) {
+router.get('/:id', async (req, res, next) => {
   try {
-    let id = req.params.id;
-    //c1
-    // let result = await productModel.findOne({
-    //   isDeleted: false,
-    //   _id: id
-    // })
-    // if (result) {
-    //   let keys = Object.keys(req.body);
-    //   for (const key of keys) {
-    //     result[key] = req.body[key]
-    //   }
-    //   await result.save()
-    //   res.send(result)
-    // }
-    // else {
-    //   res.status(404).send({ message: "ID NOT FOUND" });
-    // }
-    //c2
-    let updatedItem = await productModel.findByIdAndUpdate(id, req.body, {
-      new: true
-    });
-    res.send(updatedItem)
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return res.status(400).json({ message: 'Invalid product id' });
+    }
+
+    const product = await Product.findById(req.params.id);
+    if (!product) {
+      return res.status(404).json({ message: 'Product not found' });
+    }
+    res.json(product);
   } catch (error) {
-    res.status(404).send({ message: error.message });
+    next(error);
   }
 });
 
-router.delete('/:id', async function (req, res, next) {
+router.post('/', async (req, res, next) => {
+  let createdProduct;
+
   try {
-    let id = req.params.id;
-    //c1
-    // let result = await productModel.findOne({
-    //   isDeleted: false,
-    //   _id: id
-    // })
-    // if (result) {
-    //   let keys = Object.keys(req.body);
-    //   for (const key of keys) {
-    //     result[key] = req.body[key]
-    //   }
-    //   await result.save()
-    //   res.send(result)
-    // }
-    // else {
-    //   res.status(404).send({ message: "ID NOT FOUND" });
-    // }
-    //c2
-    let updatedItem = await productModel.findByIdAndUpdate(id, {
-      isDeleted: true
-    }, {
-      new: true
+    const { name, price, description } = req.body;
+    if (!name || typeof name !== 'string') {
+      return res.status(400).json({ message: 'name is required' });
+    }
+
+    createdProduct = await Product.create({
+      name: name.trim(),
+      price,
+      description,
     });
-    res.send(updatedItem)
+
+    const createdInventory = await Inventory.create({
+      product: createdProduct._id,
+    });
+
+    const inventoryWithProduct = await Inventory.findById(createdInventory._id).populate('product');
+
+    res.status(201).json({
+      message: 'Product created and inventory initialized',
+      product: createdProduct,
+      inventory: inventoryWithProduct,
+    });
   } catch (error) {
-    res.status(404).send({ message: error.message });
+    if (createdProduct?._id) {
+      await Product.findByIdAndDelete(createdProduct._id);
+    }
+
+    if (error.code === 11000) {
+      return res.status(409).json({
+        message: 'Duplicate value detected',
+        detail: error.keyValue,
+      });
+    }
+
+    next(error);
   }
 });
 

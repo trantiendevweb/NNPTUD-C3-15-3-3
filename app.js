@@ -1,55 +1,42 @@
-var createError = require('http-errors');
-var express = require('express');
-var path = require('path');
-var cookieParser = require('cookie-parser');
-var logger = require('morgan');
-let mongoose = require('mongoose')
+const createError = require('http-errors');
+const express = require('express');
+const logger = require('morgan');
+const mongoose = require('mongoose');
 
-var indexRouter = require('./routes/index');
-var usersRouter = require('./routes/users');
+const indexRouter = require('./routes/index');
+const productRouter = require('./routes/products');
+const inventoryRouter = require('./routes/inventories');
 
-var app = express();
-
-// view engine setup
-app.set('views', path.join(__dirname, 'views'));
-app.set('view engine', 'ejs');
+const app = express();
+const MONGO_URI = process.env.MONGO_URI || 'mongodb://127.0.0.1:27017/NNPTUD-C3-15-3-3';
 
 app.use(logger('dev'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
-app.use(cookieParser());
-app.use(express.static(path.join(__dirname, 'public')));
 
 app.use('/', indexRouter);
-app.use('/api/v1/users', require('./routes/users'));
-app.use('/api/v1/products', require('./routes/products'));
-app.use('/api/v1/categories', require('./routes/categories'));
-app.use('/api/v1/roles', require('./routes/roles'));
-app.use('/api/v1/auth', require('./routes/auth'));
+app.use('/api/v1/products', productRouter);
+app.use('/api/v1/inventories', inventoryRouter);
 
-mongoose.connect('mongodb://localhost:27017/NNPTUD-C3');
-mongoose.connection.on('connected',()=>{
-  console.log("connected");
-})
-mongoose.connection.on('disconnected',()=>{
-  console.log("disconnected");
-})
-
-
-// catch 404 and forward to error handler
-app.use(function(req, res, next) {
-  next(createError(404));
+mongoose.connect(MONGO_URI);
+mongoose.connection.on('connected', () => {
+  console.log(`Mongo connected: ${MONGO_URI}`);
+});
+mongoose.connection.on('disconnected', () => {
+  console.log('Mongo disconnected');
+});
+mongoose.connection.on('error', (error) => {
+  console.error('Mongo error:', error.message);
 });
 
-// error handler
-app.use(function(err, req, res, next) {
-  // set locals, only providing error in development
-  res.locals.message = err.message;
-  res.locals.error = req.app.get('env') === 'development' ? err : {};
+app.use((req, res, next) => {
+  next(createError(404, 'Route not found'));
+});
 
-  // render the error page
-  res.status(err.status || 500);
-  res.render('error');
+app.use((err, req, res, next) => {
+  res.status(err.status || 500).json({
+    message: err.message || 'Internal server error',
+  });
 });
 
 module.exports = app;
